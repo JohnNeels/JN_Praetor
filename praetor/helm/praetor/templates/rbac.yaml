@@ -1,0 +1,89 @@
+{{/* ============================================================
+   Namespace + Project (OpenShift)
+   ============================================================ */}}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: praetor
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    pod-security.kubernetes.io/enforce: "{{ .Values.security.podSecurityStandard }}"
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+  annotations:
+    openshift.io/display-name: "PRAETOR Enterprise ITOps Platform"
+    openshift.io/description: "Autonomous agentic ITOps platform"
+---
+{{/* ============================================================
+   Service Accounts — one per agent for RBAC isolation
+   ============================================================ */}}
+{{- range $agentKey, $agent := .Values.agentRuntime.agents }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: "praetor-agent-{{ $agent.name }}"
+  namespace: praetor
+  labels:
+    app.kubernetes.io/name: praetor
+    app.kubernetes.io/component: "agent"
+    praetor/agent: "{{ $agent.name }}"
+  annotations:
+    vault.hashicorp.com/role: "praetor-agent-{{ $agent.name }}"
+automountServiceAccountToken: false
+---
+{{- end }}
+{{/* Orchestrator SA */}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: praetor-orchestrator
+  namespace: praetor
+  labels:
+    app.kubernetes.io/name: praetor
+    app.kubernetes.io/component: orchestrator
+  annotations:
+    vault.hashicorp.com/role: "praetor-orchestrator"
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: praetor-mcp-gateway
+  namespace: praetor
+  labels:
+    app.kubernetes.io/name: praetor
+    app.kubernetes.io/component: mcp-gateway
+automountServiceAccountToken: false
+---
+{{/* ============================================================
+   ClusterRole — minimal permissions for orchestrator
+   ============================================================ */}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: praetor-orchestrator
+  namespace: praetor
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "patch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: praetor-orchestrator
+  namespace: praetor
+subjects:
+  - kind: ServiceAccount
+    name: praetor-orchestrator
+    namespace: praetor
+roleRef:
+  kind: Role
+  name: praetor-orchestrator
+  apiGroup: rbac.authorization.k8s.io

@@ -1,0 +1,234 @@
+# ============================================================
+# PRAETOR — Tool Access Control List (ACL) Matrix
+# This is the authoritative source for what each agent
+# is allowed to do. Enforced at the MCP Gateway layer.
+# Changes require security review and Git PR approval.
+# ============================================================
+# Permission levels:
+#   read  — can query/read data only
+#   write — can create/update records
+#   gated — requires human approval before execution
+#   none  — no access (omit from list)
+# ============================================================
+
+version: "1.0"
+effective_date: "2025-01-01"
+owner: "platform-security@your-org.com"
+
+agents:
+
+  sentinel-1:
+    description: "Security Watchdog — monitors and triages threats"
+    tools_allowed:
+      splunk:       [read, write]
+      dynatrace:    [read]
+      github:       [read]
+      webex:        [read, write]
+      teams:        [read, write]
+      servicenow:   [read, write]
+      email:        []             # No email access
+      terraform:    []
+      azure:        [read]
+      deploy:       []
+    blocked_actions:
+      - disable_user_account       # Requires CISO approval
+      - block_network_ip           # Requires network team approval
+      - delete_splunk_index        # Destructive — never allowed
+
+  nova-7:
+    description: "RCA Analyst — deep dive log and trace analysis"
+    tools_allowed:
+      splunk:       [read, write]
+      dynatrace:    [read, write]
+      github:       [read]
+      webex:        []
+      teams:        []
+      servicenow:   [read, write]
+      email:        []
+      terraform:    []
+      azure:        [read]
+      deploy:       []
+    blocked_actions:
+      - delete_traces
+      - purge_logs
+
+  echo-2:
+    description: "Alert Listener — ingests and routes alerts 24/7"
+    tools_allowed:
+      splunk:       [read]
+      dynatrace:    []
+      github:       []
+      webex:        [read, write]
+      teams:        [read, write]
+      servicenow:   [write]        # Can create tickets, not update/close
+      email:        []
+      terraform:    []
+      azure:        []
+      deploy:       []
+    blocked_actions:
+      - close_incident
+      - update_incident
+
+  weaver-4:
+    description: "Correlation Engine — cross-signal pattern analysis"
+    tools_allowed:
+      splunk:       [read]
+      dynatrace:    [read, write]
+      github:       []
+      webex:        []
+      teams:        []
+      servicenow:   [read]
+      email:        []
+      terraform:    []
+      azure:        [read]
+      deploy:       []
+    blocked_actions: []
+
+  herald-3:
+    description: "Comms Analyst — email and ServiceNow management"
+    tools_allowed:
+      splunk:       []
+      dynatrace:    []
+      github:       []
+      webex:        []
+      teams:        [read]
+      servicenow:   [read, write]
+      email:        [read, write, gated]   # Write always gated
+      terraform:    []
+      azure:        []
+      deploy:       []
+    blocked_actions:
+      - send_email_without_approval       # Enforced via approval gate
+      - mass_email
+      - delete_incident
+
+  forge-5:
+    description: "DevOps Executor — GitHub and CI/CD operations"
+    tools_allowed:
+      splunk:       []
+      dynatrace:    []
+      github:       [read, write, gated]  # PRs require human merge
+      webex:        []
+      teams:        [write]
+      servicenow:   [read, write]
+      email:        []
+      terraform:    [read]
+      azure:        []
+      deploy:       [gated]               # NEVER auto-deploy
+    blocked_actions:
+      - merge_to_main                     # Requires human review
+      - force_push
+      - delete_branch
+      - terraform_apply                   # Requires CAB approval
+      - production_deploy                 # Human sign-off mandatory
+
+  atlas-6:
+    description: "Infra Mapper — API discovery and CMDB sync"
+    tools_allowed:
+      splunk:       [read]
+      dynatrace:    [read]
+      github:       [read]
+      webex:        []
+      teams:        []
+      servicenow:   [read, write]
+      email:        []
+      terraform:    [read]
+      azure:        [read, write]
+      deploy:       []
+    blocked_actions:
+      - delete_cmdb_record
+      - decommission_service
+
+  oracle-8:
+    description: "API Analyst — REST and GraphQL endpoint analysis"
+    tools_allowed:
+      splunk:       [read]
+      dynatrace:    [read]
+      github:       [read]
+      webex:        []
+      teams:        []
+      servicenow:   [read]
+      email:        []
+      terraform:    []
+      azure:        [read]
+      deploy:       []
+    blocked_actions: []
+
+  prism-9:
+    description: "Log Miner — deep Splunk and ELK analysis"
+    tools_allowed:
+      splunk:       [read, write]
+      dynatrace:    [read]
+      github:       []
+      webex:        []
+      teams:        []
+      servicenow:   [read]
+      email:        []
+      terraform:    []
+      azure:        []
+      deploy:       []
+    blocked_actions:
+      - delete_saved_search
+      - modify_index_config
+
+  relay-10:
+    description: "Escalation Manager — paging and on-call"
+    tools_allowed:
+      splunk:       [read]
+      dynatrace:    []
+      github:       []
+      webex:        [write]
+      teams:        [write]
+      servicenow:   [read, write]
+      email:        [write, gated]
+      terraform:    []
+      azure:        []
+      deploy:       []
+    blocked_actions: []
+
+  cipher-11:
+    description: "Compliance Agent — audit and RBAC validation"
+    tools_allowed:
+      splunk:       [read]
+      dynatrace:    [read]
+      github:       [read]
+      webex:        []
+      teams:        []
+      servicenow:   [read]
+      email:        []
+      terraform:    [read]
+      azure:        [read]
+      deploy:       []
+    blocked_actions:
+      - modify_audit_log
+      - delete_audit_log
+      - bypass_acl
+
+  nexus-12:
+    description: "Orchestrator Agent — coordinates multi-agent workflows"
+    tools_allowed:
+      splunk:       [read]
+      dynatrace:    [read]
+      github:       [read]
+      webex:        [read, write]
+      teams:        [read, write]
+      servicenow:   [read, write]
+      email:        []
+      terraform:    []
+      azure:        [read]
+      deploy:       []
+    blocked_actions:
+      - modify_agent_acl           # ACL changes require security team
+      - reset_agent_budget         # Budget resets require operator
+
+# ============================================================
+# Global rules — applied to ALL agents regardless of above
+# ============================================================
+global_deny:
+  - delete_production_database
+  - drop_table
+  - wipe_storage
+  - disable_monitoring
+  - modify_security_policy
+  - exfiltrate_data
+  - access_pii_without_audit_log

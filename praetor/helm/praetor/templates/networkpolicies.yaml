@@ -1,0 +1,179 @@
+# ============================================================
+# PRAETOR Network Policies — Zero-Trust Pod Isolation
+# Agents may ONLY communicate through the Orchestrator and
+# MCP Gateway. Direct agent-to-agent calls are blocked.
+# ============================================================
+
+# Default DENY ALL ingress+egress in namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: praetor
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Orchestrator: accept ingress from API Gateway + Route
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-orchestrator-ingress
+  namespace: praetor
+spec:
+  podSelector:
+    matchLabels:
+      app: praetor-orchestrator
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: praetor
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: agent
+    - ports:
+        - port: 8000
+        - port: 9090
+  egress:
+    # Allow to Redis
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis
+      ports:
+        - port: 6379
+    # Allow to PostgreSQL
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgresql
+      ports:
+        - port: 5432
+    # Allow to MCP Gateway
+    - to:
+        - podSelector:
+            matchLabels:
+              app: praetor-mcp-gateway
+      ports:
+        - port: 9000
+    # Allow to Budget Controller
+    - to:
+        - podSelector:
+            matchLabels:
+              app: praetor-budget-controller
+      ports:
+        - port: 8100
+    # Allow DNS resolution
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+---
+# Agents: ONLY talk to Orchestrator + Budget Controller
+# No direct external access, no agent-to-agent calls
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-agent-egress
+  namespace: praetor
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: agent
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: praetor-orchestrator
+      ports:
+        - port: 8080
+  egress:
+    # Agents call Orchestrator
+    - to:
+        - podSelector:
+            matchLabels:
+              app: praetor-orchestrator
+      ports:
+        - port: 8000
+    # Agents call MCP Gateway (tools)
+    - to:
+        - podSelector:
+            matchLabels:
+              app: praetor-mcp-gateway
+      ports:
+        - port: 9000
+    # Agents check their budget
+    - to:
+        - podSelector:
+            matchLabels:
+              app: praetor-budget-controller
+      ports:
+        - port: 8100
+    # DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+---
+# MCP Gateway: egress to external integration endpoints
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mcp-gateway-egress
+  namespace: praetor
+spec:
+  podSelector:
+    matchLabels:
+      app: praetor-mcp-gateway
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: agent
+        - podSelector:
+            matchLabels:
+              app: praetor-orchestrator
+      ports:
+        - port: 9000
+  egress:
+    # HTTPS to external systems (Splunk, ServiceNow, etc.)
+    - ports:
+        - port: 443
+          protocol: TCP
+        - port: 8089   # Splunk REST
+          protocol: TCP
+    # DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+---
+# Allow Prometheus scraping from monitoring namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape
+  namespace: praetor
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - port: 9090
+        - port: 9091

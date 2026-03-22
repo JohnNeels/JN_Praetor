@@ -1,0 +1,39 @@
+# ============================================================
+# PRAETOR — Kustomize Base Configuration
+# ============================================================
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: praetor
+
+commonLabels:
+  app.kubernetes.io/name: praetor
+  app.kubernetes.io/managed-by: kustomize
+  app.kubernetes.io/part-of: praetor-platform
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secrets-external.yaml
+  - orchestrator-deployment.yaml
+  - mcp-gateway-deployment.yaml
+  - budget-controller-deployment.yaml
+  - agents-deployment.yaml
+  - services.yaml
+  - networkpolicies.yaml
+  - servicemonitor.yaml
+  - poddisruptionbudget.yaml
+
+images:
+  - name: orchestrator
+    newName: registry.your-org.com/praetor/orchestrator
+    newTag: latest
+  - name: mcp-gateway
+    newName: registry.your-org.com/praetor/mcp-gateway
+    newTag: latest
+  - name: budget-controller
+    newName: registry.your-org.com/praetor/budget-controller
+    newTag: latest
+  - name: agent-runtime
+    newName: registry.your-org.com/praetor/agent-runtime
+    newTag: latest

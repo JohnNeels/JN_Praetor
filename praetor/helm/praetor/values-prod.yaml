@@ -1,0 +1,64 @@
+# ============================================================
+# PRAETOR Enterprise — Production Overrides
+# Usage: helm upgrade --install praetor ./helm/praetor \
+#          -f values.yaml -f values-prod.yaml
+# ============================================================
+
+global:
+  imageTag: "1.0.0"   # Pin to specific release in prod
+
+orchestrator:
+  replicaCount: 3
+  autoscaling:
+    minReplicas: 3
+    maxReplicas: 12
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app: praetor-orchestrator
+          topologyKey: kubernetes.io/hostname
+
+mcpGateway:
+  replicaCount: 3
+
+agentRuntime:
+  agents:
+    echo:
+      replicaCount: 3    # More alert listeners in prod
+
+security:
+  podSecurityStandard: "restricted"
+  networkPolicies: true
+
+budgetController:
+  hardLimitEnforce: true
+  totalPTU: 40
+
+monitoring:
+  prometheus:
+    alerting:
+      enabled: true
+      pagerdutyKey: ""   # Populated from Vault
+
+persistence:
+  auditLog:
+    size: "200Gi"    # Larger audit log in prod
+
+# Production: use external managed DB, disable bundled
+postgresql:
+  enabled: false
+  external:
+    host: "pg-prod.your-org.com"
+    port: 5432
+    database: "praetor"
+    existingSecret: "praetor-pg-external-secret"
+
+redis:
+  master:
+    persistence:
+      size: "20Gi"

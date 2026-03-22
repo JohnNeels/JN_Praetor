@@ -1,0 +1,248 @@
+# ============================================================
+# PRAETOR Enterprise — Helm Values (Default)
+# Override with values-prod.yaml for production deployments
+# ============================================================
+
+global:
+  imageRegistry: "registry.your-org.com/praetor"
+  imageTag: "1.0.0"
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets:
+    - name: registry-pull-secret
+  storageClass: "ocs-storagecluster-ceph-rbd"   # Red Hat OCS default
+  tlsSecretName: "praetor-tls"
+  domainSuffix: "apps.ocp.your-org.com"
+
+# ============================================================
+# Orchestrator — Central agent coordination service
+# ============================================================
+orchestrator:
+  enabled: true
+  replicaCount: 2
+  image:
+    name: orchestrator
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+    limits:
+      cpu: "2000m"
+      memory: "2Gi"
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+  service:
+    type: ClusterIP
+    port: 8000
+  ingress:
+    enabled: true
+    host: "praetor-api.apps.ocp.your-org.com"
+    annotations:
+      haproxy.router.openshift.io/timeout: "300s"
+
+# ============================================================
+# Agent Runtime — Runs agent pods
+# ============================================================
+agentRuntime:
+  enabled: true
+  # Each agent gets its own Deployment with isolated RBAC
+  agents:
+    sentinel:
+      name: sentinel-1
+      persona: "Security Watchdog"
+      replicaCount: 1
+      ptuBudget: 8
+      resources:
+        requests: { cpu: "250m", memory: "256Mi" }
+        limits: { cpu: "1000m", memory: "1Gi" }
+    nova:
+      name: nova-7
+      persona: "RCA Analyst"
+      replicaCount: 1
+      ptuBudget: 8
+      resources:
+        requests: { cpu: "500m", memory: "512Mi" }
+        limits: { cpu: "2000m", memory: "2Gi" }
+    echo:
+      name: echo-2
+      persona: "Alert Listener"
+      replicaCount: 2        # Two replicas for HA alert listening
+      ptuBudget: 4
+      resources:
+        requests: { cpu: "100m", memory: "128Mi" }
+        limits: { cpu: "500m", memory: "512Mi" }
+    weaver:
+      name: weaver-4
+      persona: "Correlation Engine"
+      replicaCount: 1
+      ptuBudget: 6
+      resources:
+        requests: { cpu: "500m", memory: "512Mi" }
+        limits: { cpu: "2000m", memory: "2Gi" }
+    herald:
+      name: herald-3
+      persona: "Comms Analyst"
+      replicaCount: 1
+      ptuBudget: 6
+      resources:
+        requests: { cpu: "250m", memory: "256Mi" }
+        limits: { cpu: "1000m", memory: "1Gi" }
+    forge:
+      name: forge-5
+      persona: "DevOps Executor"
+      replicaCount: 1
+      ptuBudget: 6
+      resources:
+        requests: { cpu: "250m", memory: "256Mi" }
+        limits: { cpu: "1000m", memory: "1Gi" }
+    atlas:
+      name: atlas-6
+      persona: "Infra Mapper"
+      replicaCount: 1
+      ptuBudget: 4
+      resources:
+        requests: { cpu: "250m", memory: "256Mi" }
+        limits: { cpu: "1000m", memory: "1Gi" }
+
+# ============================================================
+# MCP Gateway — Proxies all tool calls with AuthZ enforcement
+# ============================================================
+mcpGateway:
+  enabled: true
+  replicaCount: 2
+  image:
+    name: mcp-gateway
+  resources:
+    requests: { cpu: "250m", memory: "256Mi" }
+    limits: { cpu: "1000m", memory: "1Gi" }
+  service:
+    type: ClusterIP
+    port: 9000
+
+# ============================================================
+# Budget Controller — Enforces PTU limits per agent
+# ============================================================
+budgetController:
+  enabled: true
+  replicaCount: 1
+  totalPTU: 40
+  reservePTU: 5          # Emergency reserve, never allocated
+  hardLimitEnforce: true # Reject calls over budget (vs warn)
+  image:
+    name: budget-controller
+  resources:
+    requests: { cpu: "100m", memory: "128Mi" }
+    limits: { cpu: "500m", memory: "512Mi" }
+
+# ============================================================
+# API Gateway (Kong on OpenShift)
+# ============================================================
+apiGateway:
+  enabled: true
+  type: kong
+  replicaCount: 2
+  resources:
+    requests: { cpu: "250m", memory: "256Mi" }
+    limits: { cpu: "1000m", memory: "1Gi" }
+
+# ============================================================
+# Security Configuration
+# ============================================================
+security:
+  vault:
+    enabled: true
+    address: "https://vault.your-org.com"
+    role: "praetor"
+    authMethod: "kubernetes"
+    secretPath: "secret/praetor"
+  rhsso:
+    enabled: true
+    realm: "praetor"
+    serverUrl: "https://sso.your-org.com/auth"
+    clientId: "praetor-platform"
+  podSecurityStandard: "restricted"   # baseline | restricted
+  networkPolicies: true
+  seccompProfile: "RuntimeDefault"
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1001
+
+# ============================================================
+# Integrations (credentials from Vault)
+# ============================================================
+integrations:
+  splunk:
+    enabled: true
+    host: "splunk.your-org.com"
+    port: 8089
+    protocol: https
+    indexPattern: "index=prod_* OR index=infra_*"
+  dynatrace:
+    enabled: true
+    apiUrl: "https://dynatrace.your-org.com/api/v2"
+  webex:
+    enabled: true
+    webhookMode: true
+  teams:
+    enabled: true
+    graphApiEndpoint: "https://graph.microsoft.com/v1.0"
+  servicenow:
+    enabled: true
+    instance: "your-org.service-now.com"
+  github:
+    enabled: true
+    mcpServerUrl: "https://mcp.github.com/sse"
+  exchange:
+    enabled: true
+    graphEndpoint: "https://graph.microsoft.com/v1.0"
+
+# ============================================================
+# Observability
+# ============================================================
+monitoring:
+  prometheus:
+    enabled: true
+    serviceMonitor: true
+    namespace: "monitoring"
+  grafana:
+    enabled: true
+    dashboards: true
+  opentelemetry:
+    enabled: true
+    collectorEndpoint: "http://otel-collector.monitoring:4317"
+
+# ============================================================
+# Storage
+# ============================================================
+persistence:
+  agentMemory:
+    enabled: true
+    size: "10Gi"
+  auditLog:
+    enabled: true
+    size: "50Gi"
+  mcpCache:
+    enabled: true
+    size: "5Gi"
+
+# ============================================================
+# Dependencies
+# ============================================================
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    existingSecret: "praetor-redis-secret"
+  master:
+    persistence:
+      size: "8Gi"
+
+postgresql:
+  enabled: true
+  auth:
+    existingSecret: "praetor-pg-secret"
+  primary:
+    persistence:
+      size: "20Gi"

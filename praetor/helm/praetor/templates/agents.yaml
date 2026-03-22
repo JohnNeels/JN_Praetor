@@ -1,0 +1,150 @@
+{{/* ============================================================
+   Agent Deployments — one Deployment per agent
+   Each agent is fully isolated with its own SA, resource quota,
+   and Vault secret injection
+   ============================================================ */}}
+{{- range $agentKey, $agent := .Values.agentRuntime.agents }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: "praetor-agent-{{ $agent.name }}"
+  namespace: praetor
+  labels:
+    app.kubernetes.io/name: praetor
+    app.kubernetes.io/component: agent
+    praetor/agent-name: "{{ $agent.name }}"
+    praetor/agent-persona: "{{ $agent.persona | lower | replace " " "-" }}"
+  annotations:
+    praetor/ptu-budget: "{{ $agent.ptuBudget }}"
+spec:
+  replicas: {{ $agent.replicaCount }}
+  selector:
+    matchLabels:
+      app: "praetor-agent-{{ $agent.name }}"
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: "praetor-agent-{{ $agent.name }}"
+        app.kubernetes.io/name: praetor
+        app.kubernetes.io/component: agent
+        praetor/agent-name: "{{ $agent.name }}"
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "praetor-agent-{{ $agent.name }}"
+        vault.hashicorp.com/agent-inject-secret-creds: "secret/praetor/agents/{{ $agent.name }}"
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9091"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: "praetor-agent-{{ $agent.name }}"
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: agent
+          image: "{{ $.Values.global.imageRegistry }}/agent-runtime:{{ $.Values.global.imageTag }}"
+          imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9091
+          env:
+            - name: AGENT_NAME
+              value: "{{ $agent.name }}"
+            - name: AGENT_PERSONA
+              value: "{{ $agent.persona }}"
+            - name: AGENT_PTU_BUDGET
+              value: "{{ $agent.ptuBudget }}"
+            - name: ORCHESTRATOR_URL
+              value: "http://praetor-orchestrator.praetor.svc.cluster.local:8000"
+            - name: MCP_GATEWAY_URL
+              value: "http://praetor-mcp-gateway.praetor.svc.cluster.local:9000"
+            - name: BUDGET_CONTROLLER_URL
+              value: "http://praetor-budget-controller.praetor.svc.cluster.local:8100"
+            - name: REDIS_HOST
+              value: "praetor-redis-master.praetor.svc.cluster.local"
+          envFrom:
+            - configMapRef:
+                name: praetor-config
+            - configMapRef:
+                name: "praetor-agent-{{ $agent.name }}-config"
+          resources:
+            {{- toYaml $agent.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: agent-skill-config
+              mountPath: /app/skills
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: agent-skill-config
+          configMap:
+            name: praetor-agent-configs
+      {{- with $.Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: "praetor-agent-{{ $agent.name }}"
+  namespace: praetor
+  labels:
+    app.kubernetes.io/name: praetor
+    praetor/agent-name: "{{ $agent.name }}"
+spec:
+  selector:
+    app: "praetor-agent-{{ $agent.name }}"
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+    - name: metrics
+      port: 9091
+      targetPort: metrics
+  type: ClusterIP
+---
+{{/* Per-agent ResourceQuota to enforce PTU and compute limits */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "praetor-agent-{{ $agent.name }}-config"
+  namespace: praetor
+  labels:
+    praetor/agent-name: "{{ $agent.name }}"
+data:
+  AGENT_NAME: "{{ $agent.name }}"
+  AGENT_PERSONA: "{{ $agent.persona }}"
+  PTU_BUDGET: "{{ $agent.ptuBudget }}"
+  SKILL_CONFIG_PATH: "/app/skills/{{ $agentKey }}.yaml"
+{{- end }}

@@ -1,0 +1,186 @@
+{{- if .Values.orchestrator.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: praetor-orchestrator
+  namespace: praetor
+  labels:
+    app.kubernetes.io/name: praetor
+    app.kubernetes.io/component: orchestrator
+    app.kubernetes.io/version: {{ .Values.global.imageTag | quote }}
+  annotations:
+    app.openshift.io/vcs-ref: {{ .Values.global.imageTag }}
+spec:
+  replicas: {{ .Values.orchestrator.replicaCount }}
+  selector:
+    matchLabels:
+      app: praetor-orchestrator
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: praetor-orchestrator
+        app.kubernetes.io/name: praetor
+        app.kubernetes.io/component: orchestrator
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "praetor-orchestrator"
+        vault.hashicorp.com/agent-inject-secret-config: "secret/praetor/orchestrator"
+        vault.hashicorp.com/agent-inject-template-config: |
+          {{`{{- with secret "secret/praetor/orchestrator" -}}`}}
+          export LLM_API_KEY="{{ `{{` }}.Data.data.llm_api_key{{ `}}` }}"
+          export REDIS_PASSWORD="{{ `{{` }}.Data.data.redis_password{{ `}}` }}"
+          {{`{{- end }}`}}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: praetor-orchestrator
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: {{ .Values.security.runAsNonRoot }}
+        runAsUser: {{ .Values.security.runAsUser }}
+        seccompProfile:
+          type: {{ .Values.security.seccompProfile }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: orchestrator
+          image: "{{ .Values.global.imageRegistry }}/{{ .Values.orchestrator.image.name }}:{{ .Values.global.imageTag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+          env:
+            - name: ENVIRONMENT
+              valueFrom:
+                configMapKeyRef:
+                  name: praetor-config
+                  key: environment
+            - name: TOTAL_PTU
+              value: {{ .Values.budgetController.totalPTU | quote }}
+            - name: REDIS_HOST
+              value: "praetor-redis-master.praetor.svc.cluster.local"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.monitoring.opentelemetry.collectorEndpoint | quote }}
+            - name: OTEL_SERVICE_NAME
+              value: "praetor-orchestrator"
+          envFrom:
+            - configMapRef:
+                name: praetor-integrations-config
+          resources:
+            {{- toYaml .Values.orchestrator.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: {{ .Values.security.readOnlyRootFilesystem }}
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: agent-configs
+              mountPath: /app/config
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: agent-configs
+          configMap:
+            name: praetor-agent-configs
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: praetor-orchestrator
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: praetor-orchestrator
+  namespace: praetor
+  labels:
+    app.kubernetes.io/name: praetor
+    app.kubernetes.io/component: orchestrator
+spec:
+  selector:
+    app: praetor-orchestrator
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+    - name: metrics
+      port: 9090
+      targetPort: metrics
+  type: ClusterIP
+---
+{{- if .Values.orchestrator.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: praetor-orchestrator
+  namespace: praetor
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: praetor-orchestrator
+  minReplicas: {{ .Values.orchestrator.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.orchestrator.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.orchestrator.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}
+---
+{{- if .Values.orchestrator.ingress.enabled }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: praetor-api
+  namespace: praetor
+  labels:
+    app.kubernetes.io/name: praetor
+    app.kubernetes.io/component: orchestrator
+  annotations:
+    haproxy.router.openshift.io/timeout: {{ index .Values.orchestrator.ingress.annotations "haproxy.router.openshift.io/timeout" }}
+spec:
+  host: {{ .Values.orchestrator.ingress.host }}
+  to:
+    kind: Service
+    name: praetor-orchestrator
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+{{- end }}
+{{- end }}
