@@ -1,0 +1,64 @@
+:root {
+  --bg-void: #050810;
+  --bg-deep: #080d1a;
+  --bg-panel: #0b1225;
+  --bg-card: #0e1830;
+  --bg-hover: #131f3a;
+  --border: #1a2d55;
+  --border-bright: #1e3a6e;
+  --accent-cyan: #00d4ff;
+  --accent-green: #00ff88;
+  --accent-orange: #ff6b2b;
+  --accent-red: #ff3055;
+  --accent-purple: #a855f7;
+  --accent-yellow: #ffd700;
+  --text-primary: #e2eaff;
+  --text-secondary: #7a9cc8;
+  --text-dim: #3d5a8a;
+  --glow-cyan: 0 0 20px rgba(0,212,255,0.4);
+  --glow-green: 0 0 20px rgba(0,255,136,0.4);
+  --glow-orange: 0 0 20px rgba(255,107,43,0.4);
+  --glow-red: 0 0 20px rgba(255,48,85,0.4);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Rajdhani', sans-serif;
+  background: var(--bg-void);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: repeating-linear-gradient(
+    0deg, transparent, transparent 2px,
+    rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+#root {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  text-align: left;
+  border-inline: none;
+  min-height: 100svh;
+}
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(--bg-void); }
+::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
+
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+@keyframes pulse-logo { 0%,100%{box-shadow:0 0 10px rgba(0,212,255,0.5)} 50%{box-shadow:0 0 30px rgba(0,212,255,0.9),0 0 60px rgba(168,85,247,0.4)} }
+@keyframes pulse-alert { 0%,100%{opacity:1} 50%{opacity:0.7} }
+@keyframes processing { 0%{border-color:var(--border)} 50%{border-color:var(--accent-cyan);box-shadow:0 0 15px rgba(0,212,255,0.3)} 100%{border-color:var(--border)} }
+@keyframes data-flow { 0%,100%{opacity:0.3} 50%{opacity:0.9} }
+@keyframes fadeIn { from{opacity:0;transform:translateX(10px)} to{opacity:1;transform:translateX(0)} }
