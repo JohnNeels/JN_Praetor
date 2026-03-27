@@ -65,3 +65,60 @@ export async function pauseAgent(name) {
 export async function resumeAgent(name) {
   return fetch(`${ORCHESTRATOR}/agents/${name}/resume`, { method: 'POST' })
 }
+
+// ── Admin API ────────────────────────────────────────────────────
+
+export async function restartService(service) {
+  // service: 'orchestrator' | 'budget' | 'mcp' | agent name
+  const base = service === 'budget' ? BUDGET : ORCHESTRATOR
+  const path = service === 'budget' ? '/admin/restart'
+    : service === 'mcp'             ? 'http://localhost:9000/admin/restart'
+    : service === 'orchestrator'    ? `${ORCHESTRATOR}/admin/restart`
+    : `${ORCHESTRATOR}/agents/${service}/restart`
+  try {
+    const r = await fetch(service === 'mcp' ? path : (service === 'budget' ? `${BUDGET}/admin/restart` : path),
+      { method: 'POST' })
+    return { ok: r.ok, status: r.status }
+  } catch { return { ok: false, status: 0 } }
+}
+
+export async function updateAgentConfig(name, config) {
+  // config: { ptu_budget, state, autonomous, persona }
+  try {
+    const r = await fetch(`${ORCHESTRATOR}/agents/${name}/config`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    })
+    return { ok: r.ok, data: r.ok ? await r.json() : null }
+  } catch { return { ok: false, data: null } }
+}
+
+export async function updateAgentSkills(name, skills) {
+  try {
+    const r = await fetch(`${ORCHESTRATOR}/agents/${name}/skills`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ skills }),
+    })
+    return { ok: r.ok }
+  } catch { return { ok: false } }
+}
+
+export async function resetBudget(name) {
+  try {
+    const r = await fetch(`${BUDGET}/budget/reset/${name}`, { method: 'POST' })
+    return { ok: r.ok }
+  } catch { return { ok: false } }
+}
+
+export async function scaleAgent(name, replicas) {
+  try {
+    const r = await fetch(`${ORCHESTRATOR}/agents/${name}/scale`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ replicas }),
+    })
+    return { ok: r.ok }
+  } catch { return { ok: false } }
+}
