@@ -534,13 +534,439 @@ function BudgetManager({ agents, budgetReport }) {
 }
 
 /* ══════════════════════════════════════════════════════════════
+   SECTION 5 — CREDENTIALS & INTEGRATIONS
+══════════════════════════════════════════════════════════════ */
+const INTEGRATIONS_DEF = [
+  { key:'splunk',     label:'Splunk',          icon:'📊', badge:'MCP',   type:'token',   envKey:'SPLUNK_TOKEN',           urlEnv:'SPLUNK_URL',        defaultUrl:'https://splunk.your-org.com:8089',              enabled:true  },
+  { key:'dynatrace',  label:'Dynatrace',       icon:'🔭', badge:'API',   type:'api_key', envKey:'DYNATRACE_API_TOKEN',    urlEnv:'DYNATRACE_URL',     defaultUrl:'https://dynatrace.your-org.com/api/v2',         enabled:true  },
+  { key:'servicenow', label:'ServiceNow',      icon:'🎫', badge:'REST',  type:'basic',   envKey:'SNOW_USER/SNOW_PASSWORD', urlEnv:'SNOW_URL',         defaultUrl:'https://your-org.service-now.com/api/now',      enabled:true  },
+  { key:'github',     label:'GitHub',          icon:'🐙', badge:'MCP',   type:'bearer',  envKey:'GITHUB_TOKEN',           urlEnv:'GITHUB_MCP_URL',    defaultUrl:'https://mcp.github.com/sse',                    enabled:true  },
+  { key:'webex',      label:'Cisco WebEx',     icon:'💬', badge:'WS',    type:'bearer',  envKey:'WEBEX_BOT_TOKEN',        urlEnv:'WEBEX_URL',         defaultUrl:'https://webexapis.com/v1',                      enabled:true  },
+  { key:'teams',      label:'MS Teams',        icon:'🟦', badge:'API',   type:'oauth2',  envKey:'TEAMS_CLIENT_SECRET',    urlEnv:'TEAMS_URL',         defaultUrl:'https://graph.microsoft.com/v1.0',              enabled:true  },
+  { key:'exchange',   label:'Exchange Email',  icon:'📧', badge:'GRAPH', type:'oauth2',  envKey:'EXCHANGE_CLIENT_SECRET', urlEnv:'EXCHANGE_URL',      defaultUrl:'https://graph.microsoft.com/v1.0',              enabled:true  },
+  { key:'azure',      label:'Azure',           icon:'☁️', badge:'MCP',   type:'sp',      envKey:'AZURE_CLIENT_SECRET',    urlEnv:'AZURE_URL',         defaultUrl:'https://management.azure.com',                  enabled:false },
+  { key:'terraform',  label:'Terraform',       icon:'🏗️', badge:'MCP',   type:'bearer',  envKey:'TERRAFORM_TOKEN',        urlEnv:'TERRAFORM_URL',     defaultUrl:'https://app.terraform.io/api/v2',               enabled:false },
+  { key:'pagerduty',  label:'PagerDuty',       icon:'📟', badge:'API',   type:'api_key', envKey:'PAGERDUTY_API_KEY',      urlEnv:'PAGERDUTY_URL',     defaultUrl:'https://api.pagerduty.com',                     enabled:false },
+]
+
+const AUTH_LABELS = {
+  token:'Token', api_key:'API Key', bearer:'Bearer Token',
+  basic:'Username / Password', oauth2:'OAuth2 Client Credentials', sp:'Service Principal',
+}
+
+function CredentialsPanel() {
+  const [configs, setConfigs] = useState(() =>
+    Object.fromEntries(INTEGRATIONS_DEF.map(i => [i.key, { url: i.defaultUrl, secret:'', enabled: i.enabled }]))
+  )
+  const [show, setShow]   = useState({})
+  const [toast, setToast] = useState(null)
+  const notify = (msg, type='ok') => { setToast({msg,type}); setTimeout(()=>setToast(null),3000) }
+
+  const update = (key, field, val) => setConfigs(c => ({ ...c, [key]: { ...c[key], [field]: val } }))
+  const saveOne = (key) => notify(`${key} credentials staged — apply in Vault at secret/praetor/integrations/${key}`, 'info')
+
+  return (
+    <div>
+      <div style={sectionHead}>⬡ INTEGRATION CREDENTIALS & ENDPOINTS</div>
+      <div style={{ ...card, background:'rgba(255,107,43,0.05)', borderColor:'rgba(255,107,43,0.3)', marginBottom:16,
+        fontFamily:'Share Tech Mono, monospace', fontSize:9, color:'var(--accent-orange)', lineHeight:1.8 }}>
+        ⚠ SECURITY NOTE — Secrets entered here are staged locally for reference only.<br/>
+        In production, ALL credentials are stored in HashiCorp Vault at <b>secret/praetor/integrations/</b><br/>
+        and injected into pods via the Vault Agent sidecar. Never commit secrets to Git.
+      </div>
+
+      {INTEGRATIONS_DEF.map(intg => {
+        const cfg = configs[intg.key]
+        return (
+          <div key={intg.key} style={{ ...card, opacity: cfg.enabled ? 1 : 0.6 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <span style={{ fontSize:18 }}>{intg.icon}</span>
+                <div>
+                  <span style={{ fontFamily:'Rajdhani, sans-serif', fontWeight:700, fontSize:14, color:'var(--text-primary)' }}>{intg.label}</span>
+                  <span style={{ fontFamily:'Share Tech Mono, monospace', fontSize:9, color:'var(--text-dim)', marginLeft:8,
+                    padding:'1px 6px', borderRadius:3, border:'1px solid var(--border)', background:'var(--bg-deep)' }}>{intg.badge}</span>
+                </div>
+              </div>
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <span style={{ fontFamily:'Share Tech Mono, monospace', fontSize:8, color:'var(--text-dim)' }}>
+                  {AUTH_LABELS[intg.type]}
+                </span>
+                <div onClick={() => update(intg.key, 'enabled', !cfg.enabled)}
+                  style={{ width:34, height:17, borderRadius:9, cursor:'pointer', transition:'all 0.2s',
+                    background: cfg.enabled ? 'rgba(0,255,136,0.25)' : 'rgba(122,156,200,0.1)',
+                    border:`1px solid ${cfg.enabled ? 'var(--accent-green)' : 'var(--border)'}`, position:'relative' }}>
+                  <div style={{ position:'absolute', top:2, left: cfg.enabled ? 18 : 2, width:11, height:11,
+                    borderRadius:'50%', transition:'all 0.2s',
+                    background: cfg.enabled ? 'var(--accent-green)' : 'var(--text-dim)' }} />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:10, marginBottom:8 }}>
+              <div>
+                <div style={{ fontFamily:'Share Tech Mono, monospace', fontSize:8, color:'var(--text-dim)', marginBottom:3 }}>
+                  ENDPOINT URL · {intg.urlEnv}
+                </div>
+                <input style={inputStyle} value={cfg.url}
+                  onChange={e => update(intg.key, 'url', e.target.value)} />
+              </div>
+              <div>
+                <div style={{ fontFamily:'Share Tech Mono, monospace', fontSize:8, color:'var(--text-dim)', marginBottom:3 }}>
+                  SECRET · {intg.envKey}
+                </div>
+                <div style={{ display:'flex', gap:4 }}>
+                  <input type={show[intg.key] ? 'text' : 'password'} placeholder="••••••••••••••"
+                    style={{ ...inputStyle, flex:1 }} value={cfg.secret}
+                    onChange={e => update(intg.key, 'secret', e.target.value)} />
+                  <button style={{ ...btn('cyan', true), padding:'4px 7px' }}
+                    onClick={() => setShow(s => ({ ...s, [intg.key]: !s[intg.key] }))}>
+                    {show[intg.key] ? '🙈' : '👁'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ fontFamily:'Share Tech Mono, monospace', fontSize:8, color:'var(--text-dim)', marginBottom:8 }}>
+              Vault path: <span style={{ color:'var(--accent-cyan)' }}>secret/praetor/integrations/{intg.key}</span>
+            </div>
+            <button style={btn('cyan', true)} onClick={() => saveOne(intg.key)}>✓ STAGE CONFIG</button>
+          </div>
+        )
+      })}
+      {toast && <Toast {...toast} />}
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SECTION 6 — LLM MODELS & PROVIDERS
+══════════════════════════════════════════════════════════════ */
+const PROVIDERS = [
+  { key:'anthropic', label:'Anthropic',   color:'var(--accent-cyan)',   icon:'🧠',
+    models:['claude-opus-4-6','claude-sonnet-4-6','claude-haiku-4-5-20251001'],
+    keyEnv:'ANTHROPIC_API_KEY', keyHint:'sk-ant-api03-...' },
+  { key:'openai',    label:'OpenAI',      color:'var(--accent-green)',  icon:'🤖',
+    models:['gpt-4o','gpt-4o-mini','gpt-4-turbo','o3-mini'],
+    keyEnv:'OPENAI_API_KEY', keyHint:'sk-proj-...' },
+  { key:'gemini',    label:'Google Gemini', color:'var(--accent-orange)', icon:'💎',
+    models:['gemini-2.0-flash','gemini-1.5-pro','gemini-1.5-flash'],
+    keyEnv:'GOOGLE_API_KEY', keyHint:'AIzaSy...' },
+  { key:'azure',     label:'Azure OpenAI', color:'var(--accent-purple)', icon:'☁️',
+    models:['gpt-4o','gpt-4-turbo'],
+    keyEnv:'AZURE_OPENAI_API_KEY', keyHint:'Azure deployment name' },
+]
+
+const DEFAULT_AGENT_MODELS = {
+  'SENTINEL-1':{ provider:'anthropic', model:'claude-sonnet-4-6' },
+  'NOVA-7':     { provider:'anthropic', model:'claude-opus-4-6' },
+  'ECHO-2':     { provider:'anthropic', model:'claude-haiku-4-5-20251001' },
+  'WEAVER-4':   { provider:'anthropic', model:'claude-sonnet-4-6' },
+  'HERALD-3':   { provider:'anthropic', model:'claude-sonnet-4-6' },
+  'FORGE-5':    { provider:'anthropic', model:'claude-sonnet-4-6' },
+  'ATLAS-6':    { provider:'anthropic', model:'claude-haiku-4-5-20251001' },
+  'ORACLE-8':   { provider:'anthropic', model:'claude-sonnet-4-6' },
+  'PRISM-9':    { provider:'anthropic', model:'claude-sonnet-4-6' },
+  'RELAY-10':   { provider:'anthropic', model:'claude-haiku-4-5-20251001' },
+  'CIPHER-11':  { provider:'anthropic', model:'claude-sonnet-4-6' },
+  'NEXUS-12':   { provider:'anthropic', model:'claude-sonnet-4-6' },
+}
+
+function LLMConfigPanel({ agents }) {
+  const data = agents.length ? agents : MOCK_AGENTS
+  const [providerKeys, setProviderKeys] = useState(() =>
+    Object.fromEntries(PROVIDERS.map(p => [p.key, { key:'', show:false, baseUrl:'' }]))
+  )
+  const [agentModels, setAgentModels] = useState({ ...DEFAULT_AGENT_MODELS })
+  const [toast, setToast] = useState(null)
+  const notify = (msg, type='ok') => { setToast({msg,type}); setTimeout(()=>setToast(null),3000) }
+
+  const updateAgentModel = (name, field, val) =>
+    setAgentModels(m => ({ ...m, [name]: { ...m[name], [field]: val } }))
+
+  const providerFor = (key) => PROVIDERS.find(p => p.key === key)
+
+  return (
+    <div>
+      <div style={sectionHead}>⬡ LLM PROVIDERS & MODEL ASSIGNMENT</div>
+
+      {/* Provider API Keys */}
+      <div style={{ marginBottom:20 }}>
+        <div style={{ fontFamily:'Share Tech Mono, monospace', fontSize:9, color:'var(--text-dim)',
+          letterSpacing:2, marginBottom:10 }}>API KEYS PER PROVIDER</div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+          {PROVIDERS.map(p => {
+            const state = providerKeys[p.key]
+            return (
+              <div key={p.key} style={{ ...card, marginBottom:0, borderColor:`${p.color}33` }}>
+                <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
+                  <span style={{ fontSize:16 }}>{p.icon}</span>
+                  <span style={{ fontFamily:'Rajdhani, sans-serif', fontWeight:700, fontSize:13, color:p.color }}>{p.label}</span>
+                </div>
+                <div style={{ fontFamily:'Share Tech Mono, monospace', fontSize:8, color:'var(--text-dim)', marginBottom:3 }}>
+                  {p.keyEnv}
+                </div>
+                <div style={{ display:'flex', gap:4, marginBottom: p.key === 'azure' ? 6 : 0 }}>
+                  <input type={state.show ? 'text':'password'} placeholder={p.keyHint}
+                    style={{ ...inputStyle, flex:1, fontSize:10 }} value={state.key}
+                    onChange={e => setProviderKeys(s=>({...s,[p.key]:{...s[p.key],key:e.target.value}}))} />
+                  <button style={{ ...btn('cyan',true), padding:'4px 7px' }}
+                    onClick={()=>setProviderKeys(s=>({...s,[p.key]:{...s[p.key],show:!s[p.key].show}}))}>
+                    {state.show ? '🙈':'👁'}
+                  </button>
+                </div>
+                {p.key === 'azure' && (
+                  <input placeholder="AZURE_OPENAI_ENDPOINT" style={{ ...inputStyle, marginTop:6, fontSize:10 }}
+                    value={state.baseUrl}
+                    onChange={e=>setProviderKeys(s=>({...s,azure:{...s.azure,baseUrl:e.target.value}}))} />
+                )}
+                {p.key === 'openai' && (
+                  <input placeholder="OPENAI_BASE_URL (optional — for custom endpoints)"
+                    style={{ ...inputStyle, marginTop:6, fontSize:10 }} value={state.baseUrl}
+                    onChange={e=>setProviderKeys(s=>({...s,openai:{...s.openai,baseUrl:e.target.value}}))} />
+                )}
+                <button style={{ ...btn('cyan', true), marginTop:8 }}
+                  onClick={()=>notify(`${p.label} API key staged — set ${p.keyEnv} in Vault`, 'info')}>
+                  ✓ STAGE KEY
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Per-agent model assignment */}
+      <div style={{ fontFamily:'Share Tech Mono, monospace', fontSize:9, color:'var(--text-dim)',
+        letterSpacing:2, marginBottom:10 }}>PER-AGENT MODEL ASSIGNMENT</div>
+      <div style={{ ...card }}>
+        <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <thead>
+            <tr style={{ borderBottom:'1px solid var(--border)' }}>
+              {['AGENT','PROVIDER','MODEL','CONTEXT','ACTION'].map(h => (
+                <th key={h} style={{ fontFamily:'Share Tech Mono, monospace', fontSize:8, color:'var(--text-dim)',
+                  textAlign:'left', padding:'4px 8px', letterSpacing:1 }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {AGENT_TABS.map(name => {
+              const cfg = agentModels[name] || { provider:'anthropic', model:'claude-sonnet-4-6' }
+              const prov = providerFor(cfg.provider)
+              const ctxMap = {
+                'claude-opus-4-6':'200K','claude-sonnet-4-6':'200K','claude-haiku-4-5-20251001':'200K',
+                'gpt-4o':'128K','gpt-4o-mini':'128K','gpt-4-turbo':'128K','o3-mini':'200K',
+                'gemini-2.0-flash':'1M','gemini-1.5-pro':'2M','gemini-1.5-flash':'1M',
+              }
+              return (
+                <tr key={name} style={{ borderBottom:'1px solid var(--border)' }}>
+                  <td style={{ padding:'6px 8px' }}>
+                    <span style={{ fontFamily:'Share Tech Mono, monospace', fontSize:10,
+                      color: COLOR_MAP[name] || 'var(--accent-cyan)' }}>{name}</span>
+                  </td>
+                  <td style={{ padding:'6px 8px' }}>
+                    <select style={{ ...inputStyle, padding:'2px 6px', width:'auto' }}
+                      value={cfg.provider}
+                      onChange={e => {
+                        const p = providerFor(e.target.value)
+                        updateAgentModel(name, 'provider', e.target.value)
+                        updateAgentModel(name, 'model', p?.models[0] || '')
+                      }}>
+                      {PROVIDERS.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+                    </select>
+                  </td>
+                  <td style={{ padding:'6px 8px' }}>
+                    <select style={{ ...inputStyle, padding:'2px 6px', width:'auto' }}
+                      value={cfg.model}
+                      onChange={e => updateAgentModel(name, 'model', e.target.value)}>
+                      {(prov?.models || []).map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </td>
+                  <td style={{ padding:'6px 8px' }}>
+                    <span style={{ fontFamily:'Share Tech Mono, monospace', fontSize:9,
+                      color:'var(--text-dim)' }}>{ctxMap[cfg.model] || '—'}</span>
+                  </td>
+                  <td style={{ padding:'6px 8px' }}>
+                    <button style={btn('cyan', true)}
+                      onClick={async () => {
+                        const res = await updateAgentConfig(name.toLowerCase(), {
+                          llm_provider: cfg.provider, llm_model: cfg.model
+                        })
+                        notify(res.ok ? `${name} → ${cfg.model}` : `${name} config staged (offline)`, res.ok ? 'ok' : 'warn')
+                      }}>APPLY</button>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+        <div style={{ display:'flex', gap:8, marginTop:12 }}>
+          <button style={{ ...btn('cyan'), flex:1, textAlign:'center' }}
+            onClick={async () => {
+              for (const name of AGENT_TABS) {
+                const cfg = agentModels[name]
+                await updateAgentConfig(name.toLowerCase(), { llm_provider: cfg.provider, llm_model: cfg.model })
+              }
+              notify('All agent LLM assignments saved', 'ok')
+            }}>
+            ✓ APPLY ALL ASSIGNMENTS
+          </button>
+          <button style={btn('orange')}
+            onClick={() => { setAgentModels({...DEFAULT_AGENT_MODELS}); notify('Reset to Anthropic defaults') }}>
+            RESET DEFAULTS
+          </button>
+        </div>
+      </div>
+      {toast && <Toast {...toast} />}
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SECTION 7 — MCP SERVERS
+══════════════════════════════════════════════════════════════ */
+const MCP_SERVERS_DEF = [
+  { key:'github-mcp',      label:'GitHub Official MCP',  icon:'🐙', transport:'SSE',   defaultUrl:'https://mcp.github.com/sse',    auth:'bearer', tokenEnv:'GITHUB_TOKEN',        enabled:true,  tools:['get_file_contents','search_code','list_commits','create_pull_request','get_issue','list_issues'] },
+  { key:'filesystem-mcp',  label:'Local Filesystem MCP', icon:'📁', transport:'stdio', defaultUrl:'npx @modelcontextprotocol/server-filesystem /app/workspace', auth:'none', tokenEnv:'', enabled:false, tools:['read_file','write_file','list_directory'] },
+  { key:'sqlite-mcp',      label:'SQLite MCP',           icon:'🗄️', transport:'stdio', defaultUrl:'npx @modelcontextprotocol/server-sqlite',   auth:'none',   tokenEnv:'',              enabled:false, tools:['query','execute'] },
+  { key:'brave-search-mcp',label:'Brave Search MCP',     icon:'🔍', transport:'stdio', defaultUrl:'npx @modelcontextprotocol/server-brave-search', auth:'api_key', tokenEnv:'BRAVE_API_KEY', enabled:false, tools:['brave_web_search'] },
+  { key:'custom-mcp-1',    label:'Custom MCP Server 1',  icon:'⚙️', transport:'SSE',   defaultUrl:'',                              auth:'bearer', tokenEnv:'CUSTOM_MCP_1_TOKEN',  enabled:false, tools:[] },
+  { key:'custom-mcp-2',    label:'Custom MCP Server 2',  icon:'⚙️', transport:'SSE',   defaultUrl:'',                              auth:'bearer', tokenEnv:'CUSTOM_MCP_2_TOKEN',  enabled:false, tools:[] },
+]
+
+function MCPPanel() {
+  const [servers, setServers] = useState(() =>
+    Object.fromEntries(MCP_SERVERS_DEF.map(s => [s.key, { url: s.defaultUrl, token:'', enabled: s.enabled, show:false }]))
+  )
+  const [newTool, setNewTool] = useState({})
+  const [customTools, setCustomTools] = useState({})
+  const [toast, setToast] = useState(null)
+  const notify = (msg, type='ok') => { setToast({msg,type}); setTimeout(()=>setToast(null),3000) }
+
+  const update = (key, field, val) => setServers(s => ({ ...s, [key]: { ...s[key], [field]: val } }))
+
+  const addTool = (serverKey) => {
+    const t = newTool[serverKey]
+    if (!t) return
+    setCustomTools(ct => ({ ...ct, [serverKey]: [...(ct[serverKey]||[]), t] }))
+    setNewTool(n => ({ ...n, [serverKey]: '' }))
+  }
+
+  return (
+    <div>
+      <div style={sectionHead}>⬡ MCP SERVERS</div>
+
+      <div style={{ ...card, background:'rgba(0,212,255,0.03)', borderColor:'rgba(0,212,255,0.2)', marginBottom:16,
+        fontFamily:'Share Tech Mono, monospace', fontSize:9, color:'var(--text-secondary)', lineHeight:1.8 }}>
+        ℹ MCP (Model Context Protocol) servers extend agent capabilities with external tools.<br/>
+        All MCP tool calls are ACL-checked at the MCP Gateway before execution.<br/>
+        Enabled servers are registered with the gateway at startup.
+      </div>
+
+      {MCP_SERVERS_DEF.map(svc => {
+        const cfg = servers[svc.key]
+        const allTools = [...svc.tools, ...(customTools[svc.key]||[])]
+        return (
+          <div key={svc.key} style={{ ...card, opacity: cfg.enabled ? 1 : 0.65 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <span style={{ fontSize:18 }}>{svc.icon}</span>
+                <div>
+                  <span style={{ fontFamily:'Rajdhani, sans-serif', fontWeight:700, fontSize:14,
+                    color: cfg.enabled ? 'var(--text-primary)' : 'var(--text-dim)' }}>{svc.label}</span>
+                  <span style={{ fontFamily:'Share Tech Mono, monospace', fontSize:9, color:'var(--text-dim)',
+                    marginLeft:8, padding:'1px 6px', borderRadius:3, border:'1px solid var(--border)',
+                    background:'var(--bg-deep)' }}>{svc.transport}</span>
+                </div>
+              </div>
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <span style={{ fontFamily:'Share Tech Mono, monospace', fontSize:9,
+                  color: cfg.enabled ? 'var(--accent-green)' : 'var(--text-dim)' }}>
+                  {cfg.enabled ? '● ENABLED' : '○ DISABLED'}
+                </span>
+                <div onClick={() => update(svc.key, 'enabled', !cfg.enabled)}
+                  style={{ width:34, height:17, borderRadius:9, cursor:'pointer', transition:'all 0.2s',
+                    background: cfg.enabled ? 'rgba(0,255,136,0.25)' : 'rgba(122,156,200,0.1)',
+                    border:`1px solid ${cfg.enabled ? 'var(--accent-green)' : 'var(--border)'}`,
+                    position:'relative' }}>
+                  <div style={{ position:'absolute', top:2, left: cfg.enabled ? 18 : 2, width:11, height:11,
+                    borderRadius:'50%', transition:'all 0.2s',
+                    background: cfg.enabled ? 'var(--accent-green)' : 'var(--text-dim)' }} />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display:'grid', gridTemplateColumns: svc.auth !== 'none' ? '2fr 1fr' : '1fr', gap:10, marginBottom:10 }}>
+              <div>
+                <div style={{ fontFamily:'Share Tech Mono, monospace', fontSize:8, color:'var(--text-dim)', marginBottom:3 }}>
+                  URL / COMMAND
+                </div>
+                <input style={inputStyle} value={cfg.url}
+                  onChange={e => update(svc.key, 'url', e.target.value)} />
+              </div>
+              {svc.auth !== 'none' && (
+                <div>
+                  <div style={{ fontFamily:'Share Tech Mono, monospace', fontSize:8, color:'var(--text-dim)', marginBottom:3 }}>
+                    {svc.tokenEnv}
+                  </div>
+                  <div style={{ display:'flex', gap:4 }}>
+                    <input type={cfg.show ? 'text':'password'} placeholder="••••••••••••"
+                      style={{ ...inputStyle, flex:1, fontSize:10 }} value={cfg.token}
+                      onChange={e => update(svc.key, 'token', e.target.value)} />
+                    <button style={{ ...btn('cyan',true), padding:'4px 7px' }}
+                      onClick={() => update(svc.key, 'show', !cfg.show)}>
+                      {cfg.show ? '🙈':'👁'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Tools list */}
+            <div style={{ marginBottom:10 }}>
+              <div style={{ fontFamily:'Share Tech Mono, monospace', fontSize:8, color:'var(--text-dim)', marginBottom:6 }}>
+                EXPOSED TOOLS ({allTools.length})
+              </div>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginBottom:6 }}>
+                {allTools.map(t => (
+                  <span key={t} style={{ fontFamily:'Share Tech Mono, monospace', fontSize:8, padding:'2px 7px',
+                    borderRadius:3, background:'rgba(0,212,255,0.08)', border:'1px solid rgba(0,212,255,0.2)',
+                    color:'var(--accent-cyan)' }}>{t}</span>
+                ))}
+                {!allTools.length && <span style={{ fontFamily:'Share Tech Mono, monospace', fontSize:8, color:'var(--text-dim)' }}>None defined</span>}
+              </div>
+              {/* Add custom tool */}
+              <div style={{ display:'flex', gap:4 }}>
+                <input placeholder="add_tool_name" style={{ ...inputStyle, flex:1, fontSize:9 }}
+                  value={newTool[svc.key] || ''}
+                  onChange={e => setNewTool(n=>({...n,[svc.key]:e.target.value}))}
+                  onKeyDown={e => e.key==='Enter' && addTool(svc.key)} />
+                <button style={btn('cyan',true)} onClick={()=>addTool(svc.key)}>+ TOOL</button>
+              </div>
+            </div>
+
+            <button style={btn('cyan', true)}
+              onClick={()=>notify(`${svc.label} config staged — restart MCP Gateway to apply`, 'info')}>
+              ✓ SAVE & REGISTER
+            </button>
+          </div>
+        )
+      })}
+      {toast && <Toast {...toast} />}
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════════════════════════
    ROOT — AdminPanel
 ══════════════════════════════════════════════════════════════ */
 const TABS = [
-  { key:'services', label:'⬡ SERVICES' },
-  { key:'agents',   label:'⬡ AGENTS' },
-  { key:'skills',   label:'⬡ SKILLS' },
-  { key:'budget',   label:'⬡ BUDGET' },
+  { key:'services',    label:'⬡ SERVICES' },
+  { key:'agents',      label:'⬡ AGENTS' },
+  { key:'skills',      label:'⬡ SKILLS' },
+  { key:'budget',      label:'⬡ BUDGET' },
+  { key:'credentials', label:'🔑 CREDENTIALS' },
+  { key:'llm',         label:'🧠 LLM MODELS' },
+  { key:'mcp',         label:'⚡ MCP SERVERS' },
 ]
 
 export default function AdminPanel({ agents, health, budgetReport }) {
@@ -573,10 +999,13 @@ export default function AdminPanel({ agents, health, budgetReport }) {
 
       {/* Content */}
       <div style={{ flex:1, overflowY:'auto', padding:24 }}>
-        {tab === 'services' && <ServiceControls health={health} />}
-        {tab === 'agents'   && <AgentConfig agents={agents} />}
-        {tab === 'skills'   && <SkillEditor agents={agents} />}
-        {tab === 'budget'   && <BudgetManager agents={agents} budgetReport={budgetReport} />}
+        {tab === 'services'    && <ServiceControls health={health} />}
+        {tab === 'agents'      && <AgentConfig agents={agents} />}
+        {tab === 'skills'      && <SkillEditor agents={agents} />}
+        {tab === 'budget'      && <BudgetManager agents={agents} budgetReport={budgetReport} />}
+        {tab === 'credentials' && <CredentialsPanel />}
+        {tab === 'llm'         && <LLMConfigPanel agents={agents} />}
+        {tab === 'mcp'         && <MCPPanel />}
       </div>
     </div>
   )

@@ -18,17 +18,17 @@ from typing import Any, AsyncGenerator
 
 import httpx
 import yaml
-from anthropic import AsyncAnthropic
 from opentelemetry import trace
 from pydantic import BaseModel
+
+from llm_provider import get_provider, AVAILABLE_MODELS
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer("praetor.agent")
 
 BUDGET_CONTROLLER_URL = os.getenv("BUDGET_CONTROLLER_URL", "http://praetor-budget-controller:8100")
-MCP_GATEWAY_URL = os.getenv("MCP_GATEWAY_URL", "http://praetor-mcp-gateway:9000")
-ORCHESTRATOR_URL = os.getenv("ORCHESTRATOR_URL", "http://praetor-orchestrator:8000")
-MODEL = "claude-sonnet-4-20250514"
+MCP_GATEWAY_URL       = os.getenv("MCP_GATEWAY_URL",       "http://praetor-mcp-gateway:9000")
+ORCHESTRATOR_URL      = os.getenv("ORCHESTRATOR_URL",      "http://praetor-orchestrator:8000")
 
 
 class AgentTask(BaseModel):
@@ -59,14 +59,21 @@ class BaseAgent(ABC):
     """
 
     def __init__(self):
-        self.agent_name = os.getenv("AGENT_NAME", "unknown")
-        self.persona = os.getenv("AGENT_PERSONA", "Unknown")
-        self.ptu_budget = int(os.getenv("AGENT_PTU_BUDGET", "4"))
+        self.agent_name   = os.getenv("AGENT_NAME",      "unknown")
+        self.persona      = os.getenv("AGENT_PERSONA",   "Unknown")
+        self.ptu_budget   = int(os.getenv("AGENT_PTU_BUDGET", "4"))
         self.skill_config = self._load_skill_config()
-        self.http = httpx.AsyncClient(timeout=60.0)
-        self.llm = AsyncAnthropic()  # API key injected from Vault via env
-        self._tools = self._build_tool_list()
-        logger.info(f"Agent {self.agent_name} ({self.persona}) initialised with {self.ptu_budget} PTU budget")
+        self.http         = httpx.AsyncClient(timeout=60.0)
+        # Provider is selected by LLM_PROVIDER env var (anthropic | openai | gemini | azure)
+        # Model is selected by LLM_MODEL env var; falls back to provider default
+        self.llm_provider = get_provider()
+        self._tools       = self._build_tool_list()
+        logger.info(
+            f"Agent {self.agent_name} ({self.persona}) initialised — "
+            f"provider={self.llm_provider.__class__.__name__} "
+            f"model={self.llm_provider.model_id} "
+            f"ptu_budget={self.ptu_budget}"
+        )
 
     def _load_skill_config(self) -> dict:
         path = os.getenv("SKILL_CONFIG_PATH", f"/app/skills/{self.agent_name}.yaml")
@@ -116,7 +123,7 @@ class BaseAgent(ABC):
                     "requested_ptu": estimated_ptu,
                     "task_id": task_id,
                     "task_type": "llm_call",
-                    "model": MODEL,
+                    "model": self.llm_provider.model_id,
                 },
             )
             data = resp.json()
@@ -139,54 +146,46 @@ class BaseAgent(ABC):
         max_tokens: int = 4096,
     ) -> str:
         """
-        Wrapper around Anthropic API calls.
-        Always checks PTU budget first. Handles tool use loop.
+        Provider-agnostic LLM call with tool-use loop.
+        Always checks PTU budget first. Works with Anthropic, OpenAI, Gemini, Azure.
         """
         approved = await self._check_budget(estimated_ptu, task_id)
         if not approved:
             raise RuntimeError(f"PTU budget exhausted for agent {self.agent_name}")
 
         with tracer.start_as_current_span(f"{self.agent_name}.llm_call") as span:
-            span.set_attribute("agent.name", self.agent_name)
-            span.set_attribute("agent.task_id", task_id)
-            span.set_attribute("llm.model", MODEL)
+            span.set_attribute("agent.name",       self.agent_name)
+            span.set_attribute("agent.task_id",    task_id)
+            span.set_attribute("llm.provider",     self.llm_provider.__class__.__name__)
+            span.set_attribute("llm.model",        self.llm_provider.model_id)
 
-            response = await self.llm.messages.create(
-                model=MODEL,
-                max_tokens=max_tokens,
+            # Initial call
+            response = await self.llm_provider.complete(
                 system=self.system_prompt,
-                tools=self._tools if self._tools else [],
                 messages=messages,
+                tools=self._tools,
+                max_tokens=max_tokens,
             )
 
-            # Tool use loop
-            while response.stop_reason == "tool_use":
+            # Tool use loop — provider-agnostic
+            while response.wants_tools:
                 tool_results = []
-                for block in response.content:
-                    if block.type == "tool_use":
-                        result = await self._execute_tool(block.name, block.input, task_id)
-                        tool_results.append({
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": str(result),
-                        })
+                for tc in response.tool_calls:
+                    result = await self._execute_tool(tc.name, tc.input, task_id)
+                    tool_results.append({
+                        "tool_use_id": tc.id,
+                        "content": str(result),
+                    })
 
-                messages = messages + [
-                    {"role": "assistant", "content": response.content},
-                    {"role": "user", "content": tool_results},
-                ]
-                response = await self.llm.messages.create(
-                    model=MODEL,
-                    max_tokens=max_tokens,
+                messages = self.llm_provider.append_tool_results(messages, response, tool_results)
+                response = await self.llm_provider.complete(
                     system=self.system_prompt,
-                    tools=self._tools if self._tools else [],
                     messages=messages,
+                    tools=self._tools,
+                    max_tokens=max_tokens,
                 )
 
-            text = next(
-                (b.text for b in response.content if hasattr(b, "text")), ""
-            )
-            return text
+            return response.text
 
     async def _execute_tool(self, tool_name: str, tool_input: dict, task_id: str) -> Any:
         """

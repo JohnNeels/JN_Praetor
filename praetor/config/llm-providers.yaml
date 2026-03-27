@@ -1,0 +1,164 @@
+# ============================================================
+# PRAETOR — LLM Provider Configuration
+# Controls which LLM provider and model each agent uses.
+# Override per-agent with LLM_PROVIDER / LLM_MODEL env vars.
+# ============================================================
+
+# Global default — used when agent has no override
+default:
+  provider: anthropic
+  model: claude-sonnet-4-6
+
+# ── Per-agent overrides ──────────────────────────────────────
+# Uncomment and edit to assign a different LLM to specific agents.
+# Agents not listed here use the global default above.
+agents:
+  sentinel-1:
+    provider: anthropic
+    model: claude-sonnet-4-6        # Security reasoning — keep Claude Sonnet
+    # provider: openai
+    # model: gpt-4o
+
+  nova-7:
+    provider: anthropic
+    model: claude-opus-4-6          # RCA depth — use Opus for best reasoning
+    # provider: openai
+    # model: gpt-4o
+
+  echo-2:
+    provider: anthropic
+    model: claude-haiku-4-5-20251001  # Alert routing — Haiku for low latency
+    # provider: gemini
+    # model: gemini-2.0-flash
+
+  weaver-4:
+    provider: anthropic
+    model: claude-sonnet-4-6
+    # provider: openai
+    # model: gpt-4o
+
+  herald-3:
+    provider: anthropic
+    model: claude-sonnet-4-6        # Email drafting — Sonnet quality
+    # provider: openai
+    # model: gpt-4o
+
+  forge-5:
+    provider: anthropic
+    model: claude-sonnet-4-6        # DevOps code — Sonnet
+    # provider: openai
+    # model: gpt-4o
+
+  atlas-6:
+    provider: anthropic
+    model: claude-haiku-4-5-20251001  # Topology mapping — speed over depth
+    # provider: gemini
+    # model: gemini-1.5-flash
+
+  oracle-8:
+    provider: anthropic
+    model: claude-sonnet-4-6
+    # provider: openai
+    # model: gpt-4o-mini
+
+  prism-9:
+    provider: anthropic
+    model: claude-sonnet-4-6
+    # provider: gemini
+    # model: gemini-1.5-pro           # 2M context window for log analysis
+
+  relay-10:
+    provider: anthropic
+    model: claude-haiku-4-5-20251001
+    # provider: openai
+    # model: gpt-4o-mini
+
+  cipher-11:
+    provider: anthropic
+    model: claude-sonnet-4-6        # Compliance — accurate and auditable
+    # provider: openai
+    # model: gpt-4o
+
+  nexus-12:
+    provider: anthropic
+    model: claude-sonnet-4-6
+    # provider: openai
+    # model: gpt-4o
+
+# ── Provider credentials (reference only — store secrets in Vault) ──────────
+# Env vars injected by Vault Agent sidecar at pod startup.
+# Do NOT put actual keys here.
+credentials:
+  anthropic:
+    env_var: ANTHROPIC_API_KEY
+    vault_path: secret/praetor/llm/anthropic
+  openai:
+    env_var: OPENAI_API_KEY
+    vault_path: secret/praetor/llm/openai
+    base_url_env: OPENAI_BASE_URL   # Optional — for custom endpoints
+  gemini:
+    env_var: GOOGLE_API_KEY
+    vault_path: secret/praetor/llm/gemini
+  azure:
+    endpoint_env: AZURE_OPENAI_ENDPOINT
+    api_key_env: AZURE_OPENAI_API_KEY
+    api_version_env: AZURE_OPENAI_API_VERSION
+    vault_path: secret/praetor/llm/azure
+
+# ── Available models reference ───────────────────────────────
+available_models:
+  anthropic:
+    - id: claude-opus-4-6
+      label: "Claude Opus 4.6"
+      context_window: 200000
+      best_for: "complex reasoning, long-form analysis"
+    - id: claude-sonnet-4-6
+      label: "Claude Sonnet 4.6"
+      context_window: 200000
+      best_for: "balanced capability and speed"
+    - id: claude-haiku-4-5-20251001
+      label: "Claude Haiku 4.5"
+      context_window: 200000
+      best_for: "low latency, high throughput tasks"
+
+  openai:
+    - id: gpt-4o
+      label: "GPT-4o"
+      context_window: 128000
+      best_for: "general purpose, vision tasks"
+    - id: gpt-4o-mini
+      label: "GPT-4o Mini"
+      context_window: 128000
+      best_for: "cost-efficient, fast responses"
+    - id: gpt-4-turbo
+      label: "GPT-4 Turbo"
+      context_window: 128000
+      best_for: "code generation, analysis"
+    - id: o3-mini
+      label: "o3-mini"
+      context_window: 200000
+      best_for: "deep reasoning, complex problem solving"
+
+  gemini:
+    - id: gemini-2.0-flash
+      label: "Gemini 2.0 Flash"
+      context_window: 1000000
+      best_for: "fast multimodal tasks"
+    - id: gemini-1.5-pro
+      label: "Gemini 1.5 Pro"
+      context_window: 2000000
+      best_for: "extremely long context (logs, large codebases)"
+    - id: gemini-1.5-flash
+      label: "Gemini 1.5 Flash"
+      context_window: 1000000
+      best_for: "high-volume, lower cost"
+
+  azure:
+    - id: gpt-4o
+      label: "Azure GPT-4o (deployment name)"
+      context_window: 128000
+      best_for: "enterprise Azure deployments"
+    - id: gpt-4-turbo
+      label: "Azure GPT-4 Turbo (deployment name)"
+      context_window: 128000
+      best_for: "enterprise Azure deployments"

@@ -1,0 +1,249 @@
+# ============================================================
+# PRAETOR — Integration Endpoints & Credential References
+# All secrets are read from env vars injected by Vault sidecar.
+# Edit endpoints here — never paste actual keys into this file.
+# ============================================================
+
+version: "1.0"
+owner: "platform-ops@your-org.com"
+
+integrations:
+
+  splunk:
+    label: Splunk
+    type: REST
+    badge: MCP
+    enabled: true
+    endpoint:
+      env_var: SPLUNK_URL
+      default: "https://splunk.your-org.com:8089"
+    auth:
+      type: token
+      token_env: SPLUNK_TOKEN
+      vault_path: secret/praetor/integrations/splunk
+    mcp_server:
+      enabled: false
+      url_env: SPLUNK_MCP_URL
+    health_path: /services/server/info
+    used_by: [sentinel-1, nova-7, echo-2, weaver-4, prism-9, oracle-8, cipher-11, nexus-12]
+
+  dynatrace:
+    label: Dynatrace
+    type: REST
+    badge: API
+    enabled: true
+    endpoint:
+      env_var: DYNATRACE_URL
+      default: "https://dynatrace.your-org.com/api/v2"
+    auth:
+      type: api_key
+      header: Authorization
+      prefix: "Api-Token "
+      key_env: DYNATRACE_API_TOKEN
+      vault_path: secret/praetor/integrations/dynatrace
+    health_path: /api/v2/activeGates
+    used_by: [nova-7, weaver-4, atlas-6, oracle-8, cipher-11]
+
+  servicenow:
+    label: ServiceNow
+    type: REST
+    badge: REST
+    enabled: true
+    endpoint:
+      env_var: SNOW_URL
+      default: "https://your-org.service-now.com/api/now"
+    auth:
+      type: basic
+      username_env: SNOW_USER
+      password_env: SNOW_PASSWORD
+      vault_path: secret/praetor/integrations/servicenow
+    health_path: /api/now/table/incident?sysparm_limit=1
+    used_by: [sentinel-1, nova-7, echo-2, weaver-4, herald-3, forge-5, atlas-6, relay-10, nexus-12]
+
+  github:
+    label: GitHub
+    type: MCP
+    badge: MCP
+    enabled: true
+    endpoint:
+      env_var: GITHUB_MCP_URL
+      default: "https://mcp.github.com/sse"
+    auth:
+      type: bearer
+      token_env: GITHUB_TOKEN
+      vault_path: secret/praetor/integrations/github
+    mcp_server:
+      enabled: true
+      transport: sse
+      url_env: GITHUB_MCP_URL
+    health_path: /health
+    used_by: [sentinel-1, nova-7, forge-5, atlas-6, oracle-8, cipher-11, nexus-12]
+
+  webex:
+    label: Cisco WebEx
+    type: REST
+    badge: WS
+    enabled: true
+    endpoint:
+      env_var: WEBEX_URL
+      default: "https://webexapis.com/v1"
+    auth:
+      type: bearer
+      token_env: WEBEX_BOT_TOKEN
+      vault_path: secret/praetor/integrations/webex
+    health_path: /people/me
+    used_by: [sentinel-1, echo-2, relay-10, nexus-12]
+
+  teams:
+    label: Microsoft Teams
+    type: REST
+    badge: API
+    enabled: true
+    endpoint:
+      env_var: TEAMS_URL
+      default: "https://graph.microsoft.com/v1.0"
+    auth:
+      type: oauth2
+      client_id_env: TEAMS_CLIENT_ID
+      client_secret_env: TEAMS_CLIENT_SECRET
+      tenant_id_env: AZURE_TENANT_ID
+      vault_path: secret/praetor/integrations/teams
+    health_path: /me
+    used_by: [sentinel-1, echo-2, herald-3, forge-5, relay-10, nexus-12]
+
+  exchange:
+    label: Exchange / Email
+    type: REST
+    badge: GRAPH
+    enabled: true
+    endpoint:
+      env_var: EXCHANGE_URL
+      default: "https://graph.microsoft.com/v1.0"
+    auth:
+      type: oauth2
+      client_id_env: EXCHANGE_CLIENT_ID
+      client_secret_env: EXCHANGE_CLIENT_SECRET
+      tenant_id_env: AZURE_TENANT_ID
+      mailbox_env: PRAETOR_MAILBOX
+      vault_path: secret/praetor/integrations/exchange
+    health_path: /me/mailFolders/inbox
+    used_by: [herald-3, relay-10]
+
+  azure:
+    label: Microsoft Azure
+    type: REST
+    badge: MCP
+    enabled: false          # Set true when Azure integration is provisioned
+    endpoint:
+      env_var: AZURE_URL
+      default: "https://management.azure.com"
+    auth:
+      type: service_principal
+      client_id_env: AZURE_CLIENT_ID
+      client_secret_env: AZURE_CLIENT_SECRET
+      tenant_id_env: AZURE_TENANT_ID
+      subscription_id_env: AZURE_SUBSCRIPTION_ID
+      vault_path: secret/praetor/integrations/azure
+    mcp_server:
+      enabled: false
+      url_env: AZURE_MCP_URL
+      notes: "Azure MCP server in preview — enable when stable"
+    health_path: /subscriptions?api-version=2022-12-01
+    used_by: [sentinel-1, nova-7, weaver-4, atlas-6, oracle-8, cipher-11, nexus-12]
+
+  terraform:
+    label: Terraform / HCP
+    type: REST
+    badge: MCP
+    enabled: false          # Set true when Terraform Cloud/HCP is provisioned
+    endpoint:
+      env_var: TERRAFORM_URL
+      default: "https://app.terraform.io/api/v2"
+    auth:
+      type: bearer
+      token_env: TERRAFORM_TOKEN
+      vault_path: secret/praetor/integrations/terraform
+    mcp_server:
+      enabled: false
+      url_env: TERRAFORM_MCP_URL
+    health_path: /account/details
+    used_by: [forge-5, atlas-6, cipher-11]
+
+  pagerduty:
+    label: PagerDuty
+    type: REST
+    badge: API
+    enabled: false
+    endpoint:
+      env_var: PAGERDUTY_URL
+      default: "https://api.pagerduty.com"
+    auth:
+      type: api_key
+      header: Authorization
+      prefix: "Token token="
+      key_env: PAGERDUTY_API_KEY
+      vault_path: secret/praetor/integrations/pagerduty
+    health_path: /abilities
+    used_by: [relay-10]
+
+# ── MCP Server Registry ──────────────────────────────────────────────────────
+# All MCP servers that agents can connect to via the MCP Gateway.
+mcp_servers:
+
+  github-mcp:
+    label: "GitHub Official MCP"
+    transport: sse
+    url_env: GITHUB_MCP_URL
+    default_url: "https://mcp.github.com/sse"
+    auth: bearer
+    token_env: GITHUB_TOKEN
+    enabled: true
+    tools_exposed:
+      - get_file_contents
+      - search_code
+      - list_commits
+      - create_pull_request
+      - get_issue
+      - list_issues
+
+  filesystem-mcp:
+    label: "Local Filesystem MCP"
+    transport: stdio
+    command: "npx @modelcontextprotocol/server-filesystem"
+    args: ["/app/workspace"]
+    enabled: false
+    tools_exposed:
+      - read_file
+      - write_file
+      - list_directory
+
+  sqlite-mcp:
+    label: "SQLite MCP"
+    transport: stdio
+    command: "npx @modelcontextprotocol/server-sqlite"
+    args: ["--db-path", "/app/data/praetor.db"]
+    enabled: false
+    tools_exposed:
+      - query
+      - execute
+
+  brave-search-mcp:
+    label: "Brave Search MCP"
+    transport: stdio
+    command: "npx @modelcontextprotocol/server-brave-search"
+    auth: api_key
+    key_env: BRAVE_API_KEY
+    enabled: false
+    tools_exposed:
+      - brave_web_search
+
+  custom-mcp-1:
+    label: "Custom MCP Server 1"
+    transport: sse
+    url_env: CUSTOM_MCP_1_URL
+    default_url: ""
+    auth: bearer
+    token_env: CUSTOM_MCP_1_TOKEN
+    enabled: false
+    tools_exposed: []
+    notes: "Add your own MCP server here"
